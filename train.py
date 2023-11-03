@@ -15,16 +15,22 @@ from torchvision.utils import make_grid
 from trainers import create_trainer
 from save_remote_gs import init_remote, upload_remote
 from models.networks.sync_batchnorm import DataParallelWithCallback
-from pytorch_fid.fid_model import FIDModel
+# from pytorch_fid.fid_model import FIDModel
+import os
+MOTION_DIFFUSION_PATH = os.environ.get("MOTION_DIFFUSION_PATH", '/export/home/mandreev/kim/motion_diffusion')
+sys.path.append(MOTION_DIFFUSION_PATH)
+
+
+from util.splatting_processing import SplattingProcessor
 
 # parse options
 opt = TrainOptions().parse()
 
 # fid
-fid_model = FIDModel().cuda()
-fid_model.model = DataParallelWithCallback(
-        fid_model.model,
-        device_ids=opt.gpu_ids)
+# fid_model = FIDModel().cuda()
+# fid_model.model = DataParallelWithCallback(
+#         fid_model.model,
+#         device_ids=opt.gpu_ids)
 
 
 # load remote 
@@ -103,9 +109,13 @@ def display_batch(epoch, data_i):
                     iter_counter.total_steps_so_far)
     writer.write_html()
 
+splatting_processor = SplattingProcessor()
 for epoch in iter_counter.training_epochs():
     iter_counter.record_epoch_start(epoch)
     for i, data_i in enumerate(dataloader_train, start=iter_counter.epoch_iter):
+        computed_data_i = splatting_processor(data_i)
+        # -> dict_keys(['splatted_source_features', 'flow', 'source_features', 'flow_magnitude', 'scaled_flows'])
+        data_i = {**data_i, **computed_data_i,}
         iter_counter.record_one_iteration()
         # train discriminator
         if not opt.freeze_D:
@@ -141,11 +151,11 @@ for epoch in iter_counter.training_epochs():
                     psnr = get_psnr(generated, gt)
                     psnr_total += psnr
                     num += bsize
-                    fid_model.add_sample((generated+1)/2,(gt+1)/2)
+                    # fid_model.add_sample((generated+1)/2,(gt+1)/2)
                 psnr_total /= num
-                fid = fid_model.calculate_activation_statistics()
-                writer.add_scalar("val.fid", fid, iter_counter.total_steps_so_far)
-                writer.write_scalar("val.fid", fid, iter_counter.total_steps_so_far)
+                # fid = fid_model.calculate_activation_statistics()
+                # writer.add_scalar("val.fid", fid, iter_counter.total_steps_so_far)
+                # writer.write_scalar("val.fid", fid, iter_counter.total_steps_so_far)
                 writer.add_scalar("val.psnr", psnr_total, iter_counter.total_steps_so_far)
                 writer.write_scalar("val.psnr", psnr_total, iter_counter.total_steps_so_far)
                 writer.write_html()

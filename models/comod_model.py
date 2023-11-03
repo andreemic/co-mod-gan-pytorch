@@ -89,10 +89,29 @@ class CoModModel(torch.nn.Module):
     # can't parallelize custom functions, we branch to different
     # routines based on |mode|.
     def forward(self, data, mode):
-        real_image, mask, mean_path_length = self.preprocess_input(data)
-        bsize = real_image.size(0)
+        """
+        Args:
+            - data (dict): {
+                'image': torch.Size([1, 3, 512, 512]) \in [-1,1], 
+                'mask': torch.Size([1, 1, 512, 512]), \in [0,1]
+                'path': ['./ffhq_debug/1.png']
+            }
+            - mode:
+                * 'generator': compute generator loss; returns loss, real_image, generated
+                * 'dreal': compute discriminator loss on real images; returns loss
+                * 'dfake': generate fake image, compute discriminator loss on fake image; returns loss
+                * 'd_reg': compute discriminator regularization; returns loss
+                * 'g_reg': compute generator regularization; returns loss, mean_path_length
+                * 'inference': generate fake image; returns fake_image
+        """
+        data, mean_path_length = self.preprocess_input(data)
+        
+        source_frame = data['source_frame']
+        splatted_source_features = data['splatted_source_features']
+        bsize = source_frame.size(0)
+
         if mode == 'generator':
-            g_loss, fake_image = self.compute_generator_loss(real_image, mask)
+            g_loss, fake_image = self.compute_generator_loss(source_frame, splatted_source_features)
             generated = {'fake':fake_image,
                     'input':real_image*(1-mask),
                     'gt':real_image,
@@ -106,6 +125,7 @@ class CoModModel(torch.nn.Module):
             with torch.no_grad():
                 fake_image, uc_image,_ = self.generate_fake(real_image, mask)
                 fake_image = fake_image.detach()
+                # q: why require_grad here?
                 fake_image.requires_grad_()
             d_loss = self.compute_discriminator_loss(
                 real_image=None, fake_image=fake_image, mask=mask)
@@ -231,19 +251,22 @@ class CoModModel(torch.nn.Module):
 
     def preprocess_input(self, data):
         b,c,h,w = data['image'].shape
-        if 'mask' in data:
-            if self.use_gpu():
-                data['mask'] = data['mask'].cuda()
-            mask = data['mask']
-        else:
-            mask = self.make_mask(data)
+        # if 'mask' in data:
+        #     if self.use_gpu():
+        #         data['mask'] = data['mask'].cuda()
+        #     mask = data['mask']
+        # else:
+        #     mask = self.make_mask(data)
         if self.use_gpu():
-            data['image'] = data['image'].cuda()
+            data = {
+                k: v.cuda() if isinstance(v, torch.Tensor) else v
+                for k, v in data.items()
+            }
         if 'mean_path_length' in data:
             mean_path_length = data['mean_path_length'].detach().cuda()
         else:
             mean_path_length = 0
-        return data['image'], data['mask'], mean_path_length
+        return data, mean_path_length
 
     def g_path_regularize(self, fake_image, latents, mean_path_length, decay=0.01):
         noise = torch.randn_like(fake_image) / math.sqrt(
@@ -275,8 +298,8 @@ class CoModModel(torch.nn.Module):
         G_regs['path'] = weighted_path_loss
         return G_regs, path_lengths, mean_path_length
 
-    def compute_generator_loss(self, real_image, mask):
-        fake_image, uc_image, _ = self.generate_fake(real_image, mask)
+    def compute_generator_loss(self, source_frame, splatted_source_features):
+        fake_image, uc_image, _ = self.generate_fake(source_frame, splatted_source_features)
         #pred_fake, pred_real = self.discriminate(
         #    fake_image, real_image)
         pred_fake = self.netD(fake_image, mask)
@@ -355,14 +378,25 @@ class CoModModel(torch.nn.Module):
         fake_image = torch.cat((img1,img2,img3),3)
         return fake_image, dlatent
 
-    def generate_fake(self, real_image, mask, return_latents=False, ema=False):
-        bsize = real_image.size(0)
+    def generate_fake(self, source_frame, splatted_source_features, return_latents=False, ema=False):
+        """ 
+        Args:
+            - source_frame: torch.Size([bs, 3, h, w]) \in [-1,1],
+            - splatted_source_features: List of torch.size([bs, c, h, w]) (resnet features on different scales)
+            - return_latents: bool
+            - ema: bool
+        """
+        
+        bsize = source_frame.size(0)
+
         noise = self.mixing_noise(bsize)
+        # -> torch.Size([1, 512]), ~N(0,1)
+
         if ema:
             self.netG_ema.eval()
             fake_image, uc_image, latent = self.netG_ema(
-                    real_image,
-                    mask,
+                    source_frame,
+                    splatted_source_features,
                     noise,
                     return_latents=return_latents,
                     truncation=self.opt.truncation,
@@ -370,8 +404,8 @@ class CoModModel(torch.nn.Module):
                     )
         else:
             fake_image, uc_image, latent = self.netG(
-                    real_image,
-                    mask,
+                    source_frame,
+                    splatted_source_features,
                     noise,
                     return_latents=return_latents,
                     )

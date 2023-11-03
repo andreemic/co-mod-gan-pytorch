@@ -425,8 +425,37 @@ class ConvToRGB(nn.Module):
 
 
 class ToRGB(nn.Module):
-    def __init__(self, in_channel, style_dim, upsample=True, blur_kernel=[1, 3, 3, 1], out_channel=3,weightedconv=False,
-            num_weight=None):
+    """
+    Conv layer to map n channels to 3 channels (RGB) with an optional skip connection.
+
+    Parameters:
+    -----------
+    in_channel : int
+        The number of channels in the input feature maps.
+    style_dim : int
+        The dimension of the style vector used for modulating the convolution.
+    upsample : bool, optional
+        A flag to determine whether to upsample the input feature maps. Default is True.
+    blur_kernel : list, optional
+        The kernel used for blurring during the upsampling. Default is [1, 3, 3, 1].
+    out_channel : int, optional
+        The number of channels in the output, typically 3 for RGB images. Default is 3.
+    weightedconv : bool, optional
+        A flag to determine whether to use weighted convolution instead of modulated convolution. Default is False.
+    num_weight : int, optional
+        The number of weights to be used in the WeightedConv2d layer, if `weightedconv` is True. Default is None.
+
+    Attributes:
+    -----------
+    upsample : nn.Module
+        The upsampling layer, only initialized if `upsample` is True.
+    conv : nn.Module
+        The convolutional layer, either a ModulatedConv2d or a WeightedConv2d instance based on the `weightedconv` flag.
+    bias : nn.Parameter
+        A learnable bias parameter added to the output of the convolution.
+
+"""
+    def __init__(self, in_channel, style_dim, upsample=True, blur_kernel=[1, 3, 3, 1], out_channel=3,weightedconv=False, num_weight=None):
         super().__init__()
 
         if upsample:

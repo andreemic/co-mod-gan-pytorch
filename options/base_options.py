@@ -48,6 +48,12 @@ class BaseOptions():
         parser.add_argument('--init_variance', type=float, default=0.02, help='variance of the initialization distribution')
         parser.add_argument('--z_dim', type=int, default=256,
                             help="dimension of the latent z vector")
+
+        parser.add_argument('--verbose', action='store_true', help='if specified, print more debugging information')
+
+        parser.add_argument('--use_encoder', action='store_true', help=(
+            "if False, doesn't feed the raw RGB image as input to the encoder part of the generator and only infers the target frame using the ResNet features"
+        ), default=True)
         self.initialized = True
         return parser
 

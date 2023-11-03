@@ -60,23 +60,34 @@ def create_dataloader_trainval(opt):
     instance.initialize(opt)
     print("dataset [%s] of size %d was created" %
           (type(instance).__name__, len(instance)))
+
+    train_set, val_set = torch.utils.data.random_split(instance, [0.9, 0.1])
+
     dataloader_train = torch.utils.data.DataLoader(
-        instance,
+        train_set,
         batch_size=opt.batchSize,
         shuffle=not opt.serial_batches,
         num_workers=int(opt.nThreads),
         drop_last=True
     )
-    dataset = find_dataset_using_name(opt.dataset_mode_val)
-    instance = dataset()
-    instance.initialize(opt)
-    print("dataset [%s] of size %d was created" %
-          (type(instance).__name__, len(instance)))
+
     dataloader_val = torch.utils.data.DataLoader(
-        instance,
+        val_set,
         batch_size=opt.batchSize,
         shuffle=False,
         num_workers=int(opt.nThreads),
         drop_last=False
     )
+    # dataset = find_dataset_using_name(opt.dataset_mode_val)
+    # instance = dataset()
+    # instance.initialize(opt)
+    # print("dataset [%s] of size %d was created" %
+    #       (type(instance).__name__, len(instance)))
+    # dataloader_val = torch.utils.data.DataLoader(
+    #     instance,
+    #     batch_size=opt.batchSize,
+    #     shuffle=False,
+    #     num_workers=int(opt.nThreads),
+    #     drop_last=False
+    # )
     return dataloader_train, dataloader_val

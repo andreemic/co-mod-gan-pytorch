@@ -1,4 +1,4 @@
-python test.py \
+python -m pdb test.py \
 	--mixing 0 \
 	--batchSize 1 \
 	--nThreads 1 \
